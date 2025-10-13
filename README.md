@@ -48,6 +48,6 @@ pip install .
     title={dInfer: An Efficient Inference Framework for Diffusion Language Models},
     author={Yuxin Ma, Lun Du, Lanning Wei, Kun Chen, Qian Xu, Kangyu Wang, Guofeng Feng, Guoshan Lu, Lin Liu, Xiaojing Qi, Xinyuan Zhang, Zhen Tao, Haibo Feng, Ziyun Jiang, Ying Xu, Zenan Huang, Yihong Zhuang, Haokai Xu, Jiaqi Hu, Zhenzhong Lan, Junbo Zhao, Jianguo Li, Da Zheng},
     year={2025},
-    journal={}
+    journal={arXiv preprint arXiv:2510.08666}
 }
 ```
