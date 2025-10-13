@@ -1,9 +1,11 @@
+# dInfer: An Efficient Inference Framework for Diffusion Language Models
+
 dInfer is an efficient and extensible inference framework for dLLMs. It modularizes inference into four components:
 model, diffusion iteration manager, decoding strategy and KV-cache management, and provides well-designed APIs for
 flexible combinations of algorithms in each component.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/inclusionAI/dInfer/refs/heads/add_readme/assets/Framework2.png?token=GHSAT0AAAAAADFAJNUNTREM5G2MXSZBNYDK2HHIQKQ" alt="dInfer v0.1 architecture" width="600">
+  <img src="https://raw.githubusercontent.com/inclusionAI/dInfer/refs/heads/add_readme/assets/Framework2.png" alt="dInfer v0.1 architecture" width="600">
   <br>
   <b>Figure</b>: Overall Architecture of dInfer
 </p>
@@ -20,7 +22,7 @@ bubbles across diffusion iterations.
 ## Benchmark results
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/inclusionAI/dInfer/refs/heads/add_readme/assets/dinfer_tps.png?token=GHSAT0AAAAAADFAJNUMWFFM24JKRLOXMBEU2HHIVEA" alt="dInfer v0.1 speedup" width="600">
+  <img src="https://raw.githubusercontent.com/inclusionAI/dInfer/refs/heads/add_readme/assets/dinfer_tps.png" alt="dInfer v0.1 speedup" width="600">
   <br>
   <b>Figure</b>: Benchmark results
 </p>
