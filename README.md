@@ -1,4 +1,8 @@
+<div align="center">
+
 # dInfer: An Efficient Inference Framework for Diffusion Language Models
+
+</div>
 
 dInfer is an efficient and extensible inference framework for dLLMs. It modularizes inference into four components:
 model, diffusion iteration manager, decoding strategy and KV-cache management, and provides well-designed APIs for
