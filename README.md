@@ -4,6 +4,16 @@
 
 </div>
 
+<h4 align="center">
+
+[![License: MIT](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
+[![HuggingFace: Models](https://img.shields.io/badge/HuggingFace-Models-yellow)](https://huggingface.co/inclusionAI/LLaDA-MoE-7B-A1B-Instruct)
+[![Technical Report: Arxiv](https://img.shields.io/badge/Technical%20Report-Arxiv-red)](https://arxiv.org/abs/2510.08666)
+
+<!-- [![arXiv][arxiv-image]][arxiv-url] -->
+
+</h4>
+
 dInfer is an efficient and extensible inference framework for dLLMs. It modularizes inference into four components:
 model, diffusion iteration manager, decoding strategy and KV-cache management, and provides well-designed APIs for
 flexible combinations of algorithms in each component.
