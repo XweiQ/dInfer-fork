@@ -41,6 +41,62 @@ cd dInfer
 pip install .
 ```
 
+### Run dInfer with LLaDA-MoE downloaded from HuggingFace
+
+This project supports using LLaDA(-MoE) checkpoints from HuggingFace. After downloading a model, run the CPU conversion script to fuse MoE experts into FusedMoE format that can be loaded locally.
+
+Step 1: Download checkpoints
+
+```bash
+pip install -U huggingface_hub hf_transfer
+export HF_HUB_ENABLE_HF_TRANSFER=1
+
+# Example: Instruct checkpoint
+hf download inclusionAI/LLaDA-MoE-7B-A1B-Instruct \
+  --repo-type model \
+  --local-dir /path/to/LLaDA-MoE-7B-A1B-Instruct
+```
+
+Step 2: Convert to FusedMoE format
+
+Use the conversion tool to fuse the experts.
+
+```bash
+# From repo root
+python tools/transfer.py \
+  --input  /path/to/LLaDA-MoE-7B-A1B-Instruct \
+  --output /path/to/LLaDA-MoE-7B-A1B-Instruct-fused
+```
+
+After conversion:
+- The output directory will contain `modeling_fused_olmoe.py` and a `config.json` whose
+  - `architectures` includes `FusedOlmoeForCausalLM`
+  - `auto_map.AutoModelForCausalLM` points to `modeling_fused_olmoe.FusedOlmoeForCausalLM`
+
+Step 3: Use the model in dInfer
+
+```python
+import torch
+from transformers import AutoTokenizer
+
+from dinfer.model import AutoModelForCausalLM
+from dinfer.model import FusedOlmoeForCausalLM
+from dinfer import BlockIteratorFactory, KVCacheFactory
+from dinfer import ThresholdParallelDecoder, BlockWiseDiffusionLLM
+
+m = "/path/to/LLaDA-MoE-7B-A1B-Instruct-fused"
+tok = AutoTokenizer.from_pretrained(m, trust_remote_code=True)
+model = AutoModelForCausalLM.from_pretrained(m, trust_remote_code=True, torch_dtype="bfloat16")
+
+decoder = ThresholdParallelDecoder(0, threshold=0.9)
+dllm = BlockWiseDiffusionLLM(model, decoder, BlockIteratorFactory(True), cache_factory=KVCacheFactory('dual'))
+
+prompt = "Lily can run 12 kilometers per hour for 4 hours. After that, she can run 6 kilometers per hour. How many kilometers can she run in 8 hours?"
+input_ids = tokenizer(prompt)['input_ids']
+input_ids = torch.tensor(input_ids).to(device).unsqueeze(0)
+res = dllm.generate(input_ids, gen_length=gen_len, block_length=block_len)
+```
+
 ## Cite
 
 ```
@@ -48,6 +104,6 @@ pip install .
     title={dInfer: An Efficient Inference Framework for Diffusion Language Models},
     author={Yuxin Ma, Lun Du, Lanning Wei, Kun Chen, Qian Xu, Kangyu Wang, Guofeng Feng, Guoshan Lu, Lin Liu, Xiaojing Qi, Xinyuan Zhang, Zhen Tao, Haibo Feng, Ziyun Jiang, Ying Xu, Zenan Huang, Yihong Zhuang, Haokai Xu, Jiaqi Hu, Zhenzhong Lan, Junbo Zhao, Jianguo Li, Da Zheng},
     year={2025},
-    journal={arXiv preprint arXiv:2510.08666}
+    journal={}
 }
 ```
