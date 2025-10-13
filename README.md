@@ -5,7 +5,7 @@ model, diffusion iteration manager, decoding strategy and KV-cache management, a
 flexible combinations of algorithms in each component.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/inclusionAI/dInfer/refs/heads/add_readme/assets/Framework2.png" alt="dInfer v0.1 architecture" width="600">
+  <img src="https://raw.githubusercontent.com/inclusionAI/dInfer/refs/heads/master/assets/Framework2.png" alt="dInfer v0.1 architecture" width="600">
   <br>
   <b>Figure</b>: Overall Architecture of dInfer
 </p>
@@ -22,7 +22,7 @@ bubbles across diffusion iterations.
 ## Benchmark results
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/inclusionAI/dInfer/refs/heads/add_readme/assets/dinfer_tps.png" alt="dInfer v0.1 speedup" width="600">
+  <img src="https://raw.githubusercontent.com/inclusionAI/dInfer/refs/heads/master/assets/dinfer_tps.png" alt="dInfer v0.1 speedup" width="600">
   <br>
   <b>Figure</b>: Benchmark results
 </p>
@@ -104,6 +104,6 @@ res = dllm.generate(input_ids, gen_length=gen_len, block_length=block_len)
     title={dInfer: An Efficient Inference Framework for Diffusion Language Models},
     author={Yuxin Ma, Lun Du, Lanning Wei, Kun Chen, Qian Xu, Kangyu Wang, Guofeng Feng, Guoshan Lu, Lin Liu, Xiaojing Qi, Xinyuan Zhang, Zhen Tao, Haibo Feng, Ziyun Jiang, Ying Xu, Zenan Huang, Yihong Zhuang, Haokai Xu, Jiaqi Hu, Zhenzhong Lan, Junbo Zhao, Jianguo Li, Da Zheng},
     year={2025},
-    journal={}
+    journal={arXiv preprint arXiv:2510.08666}
 }
 ```
