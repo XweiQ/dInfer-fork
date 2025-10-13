@@ -76,8 +76,8 @@ Step 2: Convert to FusedMoE format
 Use the conversion tool to fuse the experts.
 
 ```bash
-# From repo root
-python tools/transfer.py \
+# From repo root/tools
+python transfer.py \
   --input  /path/to/LLaDA-MoE-7B-A1B-Instruct \
   --output /path/to/LLaDA-MoE-7B-A1B-Instruct-fused
 ```
