@@ -280,7 +280,7 @@ def get_transfer_index_threshold(logits, temperature, mask_index, x, mask_id,
     x0 = torch.where(mask_index, x0, x)
     confidence = torch.where(mask_index, x0_p, -np.inf)
 
-    actual_threshold = (torch.max(confidence, dim=1)[0]-1e-5).clamp(-1000, threshold)
+    actual_threshold = (torch.max(confidence, dim=1)[0]-1e-5).clamp(-1000, threshold).unsqueeze(-1)
     transfer_index = confidence >= actual_threshold
     return x0, transfer_index
 
@@ -301,15 +301,15 @@ class ThresholdParallelDecoder(ParallelDecoder):
         """
         if iter_threshold is None:
             iter_threshold = self.threshold
-        mask_index = (x[block_start:block_end] == self.mask_id)
+        mask_index = (x[:, block_start:block_end] == self.mask_id)
         assert mask_index.shape[1] == logits.shape[1]
 
-        curr_x = x[block_start:block_end]
+        curr_x = x[:, block_start:block_end]
         x0, transfer_index = get_transfer_index_threshold(logits, self.temperature, mask_index, curr_x,
                 self.mask_id, threshold=iter_threshold, use_float64=self.use_float64)
         transfer_index = torch.logical_and(transfer_index, mask_index)
         assert transfer_index.dtype == torch.bool
-        x[block_start:block_end] = torch.where(transfer_index, x0, curr_x)
+        x[:, block_start:block_end] = torch.where(transfer_index, x0, curr_x)
 
 class CreditThresholdParallelDecoder(ThresholdParallelDecoder):
     """ This decoder deocdes tokens in parallel based on a threshold + credit.
@@ -366,10 +366,10 @@ class CreditThresholdParallelDecoder(ThresholdParallelDecoder):
         """
         if iter_threshold is None:
             iter_threshold = self.threshold
-        mask_index = (x[block_start:block_end] == self.mask_id)
+        mask_index = (x[:, block_start:block_end] == self.mask_id)
         assert mask_index.shape[1] == logits.shape[1]
 
-        curr_x = x[block_start:block_end]
+        curr_x = x[:, block_start:block_end]
         key = (block_start, block_end)
         used_logits = self._apply_credit_fusion(logits, mask_index, key)
 
@@ -378,7 +378,7 @@ class CreditThresholdParallelDecoder(ThresholdParallelDecoder):
 
         transfer_index = torch.logical_and(transfer_index, mask_index)
         assert transfer_index.dtype == torch.bool
-        x[block_start:block_end] = torch.where(transfer_index, x0, curr_x)
+        x[:, block_start:block_end] = torch.where(transfer_index, x0, curr_x)
 
         if hasattr(x, 'data'):
             has_mask = (x.data == self.mask_id).any()
@@ -406,13 +406,13 @@ class FixedParallelDecoder(ParallelDecoder):
     def decode(self, logits, block_start, block_end, x, iter_threshold = None):
         """ Decode the logits in a block.
         """
-        mask_index = (x[block_start:block_end] == self.mask_id)
+        mask_index = (x[:, block_start:block_end] == self.mask_id)
         assert mask_index.shape[1] == logits.shape[1]
 
-        curr_x = x[block_start:block_end]
+        curr_x = x[:, block_start:block_end]
         x0, transfer_index = get_transfer_index(logits, self.temperature, self.remasking, mask_index, curr_x, self.num_transfer_tokens[:, self.iter], None)
         self.iter += 1
-        x[block_start:block_end][transfer_index] = x0[transfer_index]
+        x[:, block_start:block_end][transfer_index] = x0[transfer_index]
 
 
 class HierarchyDecoder(ParallelDecoder):
@@ -488,10 +488,11 @@ class HierarchyDecoder(ParallelDecoder):
         """
         if iter_threshold is None:
             iter_threshold = self.threshold
-        mask_index = (x[block_start:block_end] == self.mask_id)
+        mask_index = (x[:, block_start:block_end] == self.mask_id)
         assert mask_index.shape[1] == logits.shape[1]
 
-        curr_x = x[block_start:block_end]
+        curr_x = x[:, block_start:block_end]
         x0, transfer_index = self.get_transfer_index(logits, mask_index, iter_threshold)
         self.iter += 1
-        x[block_start:block_end][transfer_index] = x0[transfer_index]
+        transfer_index = torch.logical_and(transfer_index, mask_index)
+        x[:, block_start:block_end][transfer_index] = x0[transfer_index]

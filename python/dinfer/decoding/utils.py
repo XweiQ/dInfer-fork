@@ -1,4 +1,5 @@
 import math
+import copy
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -46,15 +47,6 @@ def calculate_op_num(x, hidden_size=4096, mlp_hidden_size = 12288, vocab_size = 
     op_num = cfg_factor * (num_hidden_layers*layer_ops + x.shape[0]*hidden_size*vocab_size*x.shape[1]*2)
     return op_num/1e12 
 
-def calculate_op_num(x, hidden_size=4096, mlp_hidden_size = 12288, vocab_size = 126464, num_hidden_layers=32, cache_length=0):
-    cfg_factor = 1
-    qkv_ops = 4*x.shape[0]*hidden_size*hidden_size*x.shape[1]*2
-    attn_ops = x.shape[0]*(cache_length)*x.shape[1]*hidden_size*2
-    ffn_ops = 3*x.shape[0]*hidden_size*mlp_hidden_size*x.shape[1]*2
-    layer_ops = qkv_ops + attn_ops + ffn_ops
-    op_num = cfg_factor * (num_hidden_layers*layer_ops + x.shape[0]*hidden_size*vocab_size*x.shape[1]*2)
-    return op_num/1e12 
-
 class TokenArray:
     """ A token array to support read, update and expansion.
 
@@ -73,15 +65,20 @@ class TokenArray:
         The device where the token array is placed on.
     """
     def __init__(self, prompt, gen_length, mask_id, eos_id, device):
-        self.prompt = prompt
-        self.data = torch.full((1, prompt.shape[1] + gen_length), mask_id, dtype=torch.long).to(device)
+        self.prompt = prompt.to(device)
+        self.data = torch.full((prompt.shape[0], prompt.shape[1] + gen_length), mask_id, dtype=torch.long).to(device)
         self.data[:, :prompt.shape[1]] = prompt.clone()
         self.gen_length = gen_length
         self.eos_id = eos_id
+        self.mask_id = mask_id
 
     @property
     def total_length(self):
         return self.prompt.shape[1] + self.gen_length
+
+    @property
+    def batch_size(self):
+        return self.prompt.shape[0]
 
     @property
     def device(self):
@@ -91,13 +88,22 @@ class TokenArray:
         pass
 
     def get_generated_tokens(self):
-        return self.data[self.data != self.eos_id].unsqueeze(0)
+        if self.batch_size == 1:
+            return self.data[self.data != self.eos_id].unsqueeze(0)
+        else:
+            return self.data
+
+    def select_seqs(self, idx):
+        arr = copy.copy(self)
+        arr.prompt = self.prompt[idx]
+        arr.data = self.data[idx]
+        return arr
 
     def __getitem__(self, idx):
-        return self.data[:, idx]
+        return self.data[idx]
 
     def __setitem__(self, idx, vals):
-        self.data[:, idx] = vals
+        self.data[idx] = vals
 
 class DistAlignedTokenArray:
     """ A token array to support read, update and expansion in the distributed setting.
@@ -131,6 +137,7 @@ class DistAlignedTokenArray:
         self.gen_length = total_length - prompt.shape[1]
         self.prompt = prompt
         self.eos_id = eos_id
+        self.mask_id = mask_id
 
     @property
     def total_length(self):
@@ -147,10 +154,10 @@ class DistAlignedTokenArray:
         pass
 
     def __getitem__(self, idx):
-        return self.data[:, idx]
+        return self.data[idx]
 
     def __setitem__(self, idx, vals):
-        self.data[:, idx] = vals
+        self.data[idx] = vals
 
 class BlockLoc:
     """ The location of the block in the token array.
@@ -158,6 +165,8 @@ class BlockLoc:
     def __init__(self, start, end):
         self.start = start
         self.end = end
+
+
 
 class BlockIterator:
     """ Block iterator
@@ -184,9 +193,47 @@ class BlockIterator:
             self.first_block_start = self.x.prompt.shape[1]
 
     def _get_first_block_start(self):
-        gen_len = self.x.total_length - self.x.prompt.shape[1]
-        left_align = ((gen_len + self.block_length - 1) // self.block_length) * self.block_length - gen_len
-        return self.x.prompt.shape[1] - left_align
+        prompt = self.x.prompt
+        non_mask_number = (prompt != self.x.mask_id).sum(dim=-1).min().item()
+        start = ((non_mask_number) // self.block_length) * self.block_length
+        return start
+
+    def __iter__(self):
+        self.iter = 0
+        return self
+
+    def __next__(self):
+        current_block_start = self.first_block_start + self.iter * self.block_length
+        if current_block_start >= self.x.total_length:
+            raise StopIteration
+        current_block_end = min(current_block_start + self.block_length, self.x.total_length)
+        assert current_block_end <= self.x.total_length
+        self.iter += 1
+        return BlockLoc(current_block_start, current_block_end), self.x[:, current_block_start:current_block_end]
+
+class BlockDiffusionIterator():
+    """ Block iterator
+
+    This performs block-wise iteration on the input token array for diffusion decoding.
+
+    Parameters
+    ----------
+    x : TokenArray
+        The token array that contains decoded tokens and stores the new generated tokens
+    block_length : int
+        The length of the block
+    """
+    def __init__(self, x, block_length):
+        self.x = x
+        self.iter = 0
+        self.block_length = block_length
+        self.first_block_start = self._get_first_block_start()
+    
+    def _get_first_block_start(self):
+        prompt = self.x.prompt
+        non_mask_number = (prompt != self.x.mask_id).sum(dim=-1).min().item()
+        start = ((non_mask_number) // self.block_length) * self.block_length
+        return start
 
     def __iter__(self):
         self.iter = 0
@@ -201,6 +248,7 @@ class BlockIterator:
         self.iter += 1
         return BlockLoc(current_block_start, current_block_end), self.x[current_block_start:current_block_end]
 
+
 class BlockIteratorFactory:
     """ Iterator factory
 
@@ -208,20 +256,25 @@ class BlockIteratorFactory:
 
     Parameters
     ----------
-    x : torch.Tensor
-        The sequence to iterate over when diffusion LLM generates tokens
-    block_length : int
-        The block length
+    start_block_align : bool
+        Align the first decoding block to the block size. The first block may overlap with the prompt.
+    
+    use_block_diffusion: bool
+        If this flag set to True, the block diffusion iteration will be used and start_block_algin will be ignored.
 
     Returns
     -------
     BlockIterator : the block iterator.
     """
-    def __init__(self, start_block_align=False):
+    def __init__(self, start_block_align=False, use_block_diffusion=False):
         self._start_block_align = start_block_align
+        self._use_bd = use_block_diffusion
 
     def create(self, x, block_length):
-        return BlockIterator(x, block_length, start_block_align=self._start_block_align)
+        if self._use_bd:
+            return BlockDiffusionIterator(x, block_length)
+        else:
+            return BlockIterator(x, block_length, start_block_align=self._start_block_align)
 
 class KVCache:
     """ The KV-cache
@@ -379,22 +432,50 @@ class DiffusionKVCacheManager:
         # self.block_start = block_start
         # self.block_end = block_end
         if self.cache_type == 'prefix':
-            replace_position = (block_start, self.past_key_values.seq_len)
+            replace_position = (int(block_start), int(self.past_key_values.seq_len))
         else:
-            replace_position = (block_start, block_end)
+            replace_position = (int(block_start), int(block_end))
         return self.past_key_values, replace_position
+
+class BlockDiffusionPrefixCacheManager(DiffusionKVCacheManager):
+    """
+     KVcache manager of block diffusion.
+    """
+
+    def get_key_values(self, block_start, block_end):
+        # use prefix cache for block diffusion.
+        return self.past_key_values, (int(block_start), int(block_end))
+
+    def extend_cache(self, end):
+        """
+        When move to new block, extend the kvcache length from previous block end to new block end location.
+
+        Parameters
+        ----------
+        length : int
+            The extended length (equvelent to block length)
+        
+        """
+        cur_kv_length = self.past_key_values._data.shape[-2]
+        extended_cache = F.pad(self.past_key_values._data, pad=(0, 0, 0, end-cur_kv_length), mode='constant', value=0)
+        self.past_key_values._data = extended_cache
+
 
 class KVCacheFactory:
     """ KV-cache factory.
 
     This class generates KV-cache for the diffusion LLM when it runs diffusion iterations.
     """
-    def __init__(self, cache_type, cache_update_freq=None):
+    def __init__(self, cache_type, cache_update_freq=None, is_bd_model=False):
         self.cache_type = cache_type
         self.cache_update_freq = cache_update_freq
+        self.is_bd_model=is_bd_model
 
     def create(self):
-        return DiffusionKVCacheManager(cache_update_freq=self.cache_update_freq, cache_type=self.cache_type)
+        if self.is_bd_model:
+            return BlockDiffusionPrefixCacheManager(cache_update_freq=self.cache_update_freq, cache_type=self.cache_type)
+        else:
+            return DiffusionKVCacheManager(cache_update_freq=self.cache_update_freq, cache_type=self.cache_type)
 
 def gather_sequence_block(partial_data, partial_start, partial_end, block_start, block_end, rank, world_size):
     """ Gather the wanted block data from the partitioned data.

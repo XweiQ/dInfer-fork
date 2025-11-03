@@ -1,0 +1,44 @@
+tag:
+  - math_word_problems
+task: gsm8k_llada_moe
+dataset_path: gsm8k
+dataset_name: main
+output_type: generate_until
+training_split: train
+test_split: test
+# <role>SYSTEM</role>detailed thinking off<|role_end|><role>HUMAN</role>'+prompt+'<|role_end|><role>ASSISTANT</role>' 
+doc_to_text: "Question: {{question}}\nPlease reason step by step, and put your final answer within \\boxed{}"
+doc_to_target: "{{answer.split('####')[-1].strip()}}"
+metric_list:
+  - metric: exact_match
+    aggregation: mean
+    higher_is_better: true
+    ignore_case: true
+    ignore_punctuation: false
+    regexes_to_ignore:
+      - "\\\\boxed\\{"
+      - "\\}"
+      - "[\\s]+"
+generation_kwargs:
+  until:
+    - "Question:"
+    - "</s>"
+    - "<|im_end|>"
+  do_sample: false
+  temperature: 0.0
+repeats: 1
+num_fewshot: 0
+filter_list:
+  - name: "strict-match"
+    filter:
+      - function: "regex"
+        regex_pattern: "\\\\boxed\\{(.*?)\\}"
+      - function: "take_first"
+  - name: "flexible-extract"
+    filter:
+      - function: "regex"
+        group_select: -1
+        regex_pattern: "(?s)\\\\boxed\\{(.*?)\\}|(-?\\d+\\.?\\d*)"
+      - function: "take_first"
+metadata:
+  version: 3.0
