@@ -76,11 +76,17 @@ def main(world_size, rank, gpu_id, args):
         if args.model_type=='llada_moe':
             model = FusedOlmoeForCausalLM(config=model_config).eval()
             model.load_weights(args.model_name, torch_dtype=torch.bfloat16)
+            mask_id = 156895
+            eos_id = 156892
         elif args.model_type=='llada2':
             model = LLaDA2MoeModelLM(config=model_config).eval()
             model.load_weights(args.model_name, torch_dtype=torch.bfloat16, device=device)
+            mask_id = 156895
+            eos_id = 156892
         elif args.model_type=='llada':
-            model = LLaDAModelLM.from_pretrained(args.model_name, torch_dtype=torch.bfloat16, init_device=device).eval()
+            model = LLaDAModelLM.from_pretrained(args.model_name, torch_dtype=torch.bfloat16, init_device=str(device)).eval()
+            mask_id = 126336
+            eos_id = 126081
         else:
             raise ValueError('model type not supported')
         
@@ -92,12 +98,12 @@ def main(world_size, rank, gpu_id, args):
 
         if args.parallel_decoding == 'threshold':
             if args.use_credit:
-                decoder = CreditThresholdParallelDecoder(temperature=0, threshold=args.threshold, mask_id=156895, eos_id=156892)
+                decoder = CreditThresholdParallelDecoder(temperature=0, threshold=args.threshold, mask_id=mask_id, eos_id=eos_id)
             else:
-                decoder = ThresholdParallelDecoder(temperature=0, threshold=args.threshold, mask_id=156895, eos_id=156892)
+                decoder = ThresholdParallelDecoder(temperature=0, threshold=args.threshold, mask_id=mask_id, eos_id=eos_id)
 
         else:
-            decoder = HierarchyDecoder(temperature=0, threshold=args.threshold, low_threshold=args.low_threshold, mask_id=156895, eos_id=156892)
+            decoder = HierarchyDecoder(temperature=0, threshold=args.threshold, low_threshold=args.low_threshold, mask_id=mask_id, eos_id=eos_id)
         use_sw = args.prefix_look > 0 or args.after_look > 0 or args.warmup_times > 0
             
         if args.cache == 'prefix' or args.cache == 'dual':
@@ -105,19 +111,16 @@ def main(world_size, rank, gpu_id, args):
         else:
             cache_factory=None
 
-        if not args.use_bd:
-            if args.cont_weight>0:
-                if use_sw:
-                    dllm = IterSmoothWithVicinityCacheDiffusionLLM(model, decoder, BlockIteratorFactory(start_block_align=True), cache_factory=cache_factory, early_stop=True,
-                        cont_weight=args.cont_weight, prefix_look=args.prefix_look, after_look=args.after_look, warmup_steps=args.warmup_times)
-                else:
-                    dllm = IterSmoothDiffusionLLM(model, decoder, BlockIteratorFactory(start_block_align=True), cache_factory=cache_factory, early_stop=True, cont_weight=args.cont_weight)
-            else:
-                if use_sw:
-                    dllm = VicinityCacheDiffusionLLM(model, decoder, BlockIteratorFactory(start_block_align=True), cache_factory=cache_factory, early_stop=True,
-                        prefix_look=args.prefix_look, after_look=args.after_look, warmup_steps=args.warmup_times)
-                else:
-                    dllm = BlockWiseDiffusionLLM(model, decoder, BlockIteratorFactory(start_block_align=True), cache_factory=cache_factory, early_stop=True, use_shift=args.use_shift)
+        if not args.use_bd and args.cont_weight>0 and use_sw:
+            dllm = IterSmoothWithVicinityCacheDiffusionLLM(model, decoder, BlockIteratorFactory(start_block_align=True), cache_factory=cache_factory, early_stop=True,
+                cont_weight=args.cont_weight, prefix_look=args.prefix_look, after_look=args.after_look, warmup_steps=args.warmup_times)
+        elif not args.use_bd and args.cont_weight>0 and not use_sw:
+            dllm = IterSmoothDiffusionLLM(model, decoder, BlockIteratorFactory(start_block_align=True), cache_factory=cache_factory, early_stop=True, cont_weight=args.cont_weight)
+        elif not args.use_bd and args.cont_weight == 0 and use_sw:
+            dllm = VicinityCacheDiffusionLLM(model, decoder, BlockIteratorFactory(start_block_align=True), cache_factory=cache_factory, early_stop=True,
+                prefix_look=args.prefix_look, after_look=args.after_look, warmup_steps=args.warmup_times)
+        elif not args.use_bd and args.cont_weight == 0 and not use_sw:
+            dllm = BlockWiseDiffusionLLM(model, decoder, BlockIteratorFactory(start_block_align=True), cache_factory=cache_factory, early_stop=True, use_shift=args.use_shift)
         else:
             dllm = BlockDiffusionLLM(model, decoder, BlockIteratorFactory(start_block_align=True, use_block_diffusion=True), cache_factory=cache_factory, early_stop=True)
 

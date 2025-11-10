@@ -215,9 +215,9 @@ class BlockDiffusionRunner(BlockRunner):
                     use_cache=True, 
                     position_ids=pos_ids[:, block_loc.start:block_loc.end],
                     replace_position=replace_position)
+                self.diff_iteration.num_forwards +=1
+                self.diff_iteration.iter_no +=1
             kv_cache.update(output.past_key_values)
-            self.diff_iteration.num_forwards +=1
-            self.diff_iteration.iter_no +=1
 
 
 
@@ -338,7 +338,7 @@ class BlockDiffusionIteration:
         """
         if kv_cache is None:
             output = model(x.data[:, :block_loc.end], 
-                attention_mask=attn_mask[:,:block_loc.end,:block_loc.end], 
+                attention_mask=attn_mask[:,:block_loc.end,:block_loc.end],
                 position_ids=pos_ids[:, :block_loc.end])
             logits = output.logits[:, block_loc.start:block_loc.end]
         else:
@@ -907,7 +907,7 @@ class BlockDiffusionLLM(DiffusionLLM):
         self.cache_factory = cache_factory
         self.diff_iteration = BlockDiffusionIteration()
         self.block_runner = BlockDiffusionRunner(self.diff_iteration, early_stop, maximum_unroll, expected_tpf)
-        
+        self.early_stop = early_stop
 
     @property
     def num_forwards(self):
@@ -938,6 +938,7 @@ class BlockDiffusionLLM(DiffusionLLM):
 
         x = TokenArray(prompt, new_gen_length, self.decoder.mask_id, self.decoder.eos_id, self.model.device)
         it = self.iterator_factory.create(x, block_length)
+        prompt_length = it._get_first_block_start()
         kv_cache = self.cache_factory.create()
 
         # prefill for kv_cache
@@ -951,7 +952,7 @@ class BlockDiffusionLLM(DiffusionLLM):
         for block_id, (block_loc, block) in enumerate(it):
             self.decoder.block_init(block, block_id)
             decode_compl = self.block_runner.decode(self.model, self.decoder, x, kv_cache, block, block_loc, block_id, pos_ids, bd_attn_mask)
-            if torch.all(decode_compl):
+            if torch.all(decode_compl) and self.early_stop:
                 break
         logger.info(f'The number of diffusion iterations: {self.num_forwards}')
         return x.get_generated_tokens()

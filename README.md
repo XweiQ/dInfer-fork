@@ -140,7 +140,7 @@ Use the conversion tool to fuse MoE experts.
 
 ```bash
 # From repo root
-python tools/transfer.py \
+python -m tools.transfer.py \
   --input  /path/to/LLaDA-MoE-7B-A1B-Instruct \
   --output /path/to/LLaDA-MoE-7B-A1B-Instruct-fused
 ```
@@ -246,6 +246,11 @@ model = AutoModelForCausalLM.from_pretrained(m, trust_remote_code=True, torch_dt
   - For more examples and comprehensive instructions, see [our quickstart guide](evaluations/eval_guide.md).
   - Currently, the evaluation configuration is only aligned with LLaDA-MoE; lm-eval evaluations for llada2-mini/flash and other models will be updated later.
 
+## Contact us
+- Wechat Group
+<p align="left">
+  <img src="assets/wechat.JPG" alt="Wechat Group" width="150">
+</p>
 
 ## Citation
 ```
@@ -253,6 +258,6 @@ model = AutoModelForCausalLM.from_pretrained(m, trust_remote_code=True, torch_dt
     title={dInfer: An Efficient Inference Framework for Diffusion Language Models},
     author={Yuxin Ma, Lun Du, Lanning Wei, Kun Chen, Qian Xu, Kangyu Wang, Guofeng Feng, Guoshan Lu, Lin Liu, Xiaojing Qi, Xinyuan Zhang, Zhen Tao, Haibo Feng, Ziyun Jiang, Ying Xu, Zenan Huang, Yihong Zhuang, Haokai Xu, Jiaqi Hu, Zhenzhong Lan, Junbo Zhao, Jianguo Li, Da Zheng},
     year={2025},
-    journal={}
+    journal={arXiv preprint arXiv:2510.08666}
 }
 ```
